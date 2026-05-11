@@ -1,0 +1,21 @@
+{
+  "name": "monitor",
+  "private": true,
+  "version": "0.0.1",
+  "description": "前端监控全栈实战 - Monorepo 根目录",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "dev": "pnpm -r run dev",
+    "type-check": "pnpm -r run type-check"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

@@ -1,0 +1,19 @@
+:80 {
+  handle /api/* {
+    reverse_proxy 192.168.50.91:3030
+  }
+
+  handle_path /dsn-api/* {
+    reverse_proxy 192.168.50.91:3000
+  }
+
+  uri strip_suffix /
+
+  root * /data
+
+  handle {
+    templates
+    try_files {path} /index.html
+    file_server
+  }
+}

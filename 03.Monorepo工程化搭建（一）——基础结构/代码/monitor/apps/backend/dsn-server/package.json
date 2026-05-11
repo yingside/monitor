@@ -1,0 +1,11 @@
+{
+  "name": "@monitor/dsn-server",
+  "version": "0.1.0",
+  "description": "Monitor 数据接收服务（DSN Server）",
+  "private": true,
+  "scripts": {
+    "dev": "echo '后端服务将在第 14 章实现'",
+    "build": "echo '后端服务将在第 14 章实现'",
+    "type-check": "tsc --noEmit"
+  }
+}

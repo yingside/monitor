@@ -1,0 +1,52 @@
+{
+  "name": "monitor-demo",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build:watch": "turbo build:watch",
+    "build:lib": "turbo build:lib",
+    "build:server": "turbo build:server",
+    "start:dev": "turbo start:dev",
+    "dev": "turbo dev",
+    "lint:prettier": "prettier --write \"**/*.{js,ts,mjs,cjs,json,tsx,css,less,scss,vue,html,md}\"",
+    "lint:eslint": "eslint --fix --ext .js,.ts,.mjs,.cjs,.tsx,.vue .",
+    "spellcheck": "cspell lint --no-progress --show-suggestions --no-summary --no-color \"(packages|apps)/**/*.{js,ts,mjs,cjs,json,tsx,css,less,scss,vue,html,md}\"",
+    "commit": "git-cz",
+    "prepare": "husky",
+    "docker:start": "docker compose -p duyi-monitor -f .dccontainer/docker-compose.yml up -d"
+  },
+  "config": {
+    "commitizen": {
+      "path": "node_modules/cz-git"
+    }
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.11.0",
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@cspell/dict-lorem-ipsum": "^4.0.4",
+    "@eslint/js": "^9.29.0",
+    "@types/node": "^24.0.3",
+    "commitizen": "^4.3.1",
+    "cspell": "^9.1.1",
+    "cz-git": "^1.11.2",
+    "eslint": "^9.29.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-prettier": "^5.5.0",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.20",
+    "eslint-plugin-vue": "^10.2.0",
+    "globals": "^16.2.0",
+    "husky": "^9.1.7",
+    "pm2": "^6.0.8",
+    "prettier": "^3.6.0",
+    "tsup": "^8.5.0",
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.34.1"
+  }
+}

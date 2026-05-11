@@ -1,0 +1,1 @@
+{"version":3,"file":"errors.d.ts","sourceRoot":"","sources":["../../../src/tracing/errors.ts"],"names":[],"mappings":"AAAA,OAAO,EAAE,SAAS,EAAE,MAAM,wBAAwB,CAAC;AAEnD,qBAAa,MAAM;IACL,OAAO,CAAC,SAAS;gBAAT,SAAS,EAAE,SAAS;IAExC,IAAI;CAqBL"}
