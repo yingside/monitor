@@ -1,0 +1,29 @@
+{
+  "name": "@monitor/browser",
+  "version": "0.1.0",
+  "description": "Monitor 浏览器 SDK 入口包",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@monitor/browser-utils": "workspace:*",
+    "@monitor/core": "workspace:*",
+    "web-vitals": "^5.2.0"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0"
+  }
+}
