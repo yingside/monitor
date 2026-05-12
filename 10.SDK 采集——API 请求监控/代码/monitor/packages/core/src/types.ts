@@ -1,0 +1,503 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// 事件类型枚举
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 监控事件的四大分类，对应后续四类采集插件 */
+export type EventType = 'error' | 'performance' | 'behavior' | 'api'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SDK 初始化配置
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * init() 时传入的用户配置
+ * 所有可选项在 Monitor 内部都有明确的默认值
+ */
+export interface MonitorOptions {
+  /** 数据上报地址（Data Source Name），由 DSN 服务分配 */
+  dsn: string
+
+  /** 项目唯一标识，用于区分不同应用的数据 */
+  appId: string
+
+  /** 用户标识（可选），用于关联错误与具体用户 */
+  userId?: string
+
+  /**
+   * 采样率，范围 0-1，默认 1（全量采集）
+   * 0.5 表示随机采集 50% 的事件，可在高流量场景下降低上报量
+   */
+  sampleRate?: number
+
+  /**
+   * 插件列表
+   * 每个插件封装一类采集能力（错误采集、性能采集、行为采集等）
+   */
+  plugins?: Plugin[]
+
+  /**
+   * 开启调试模式（默认 false）
+   * true 时会在控制台打印每条采集事件，方便本地开发验证
+   */
+  debug?: boolean
+
+  /**
+   * 内存队列最大长度（默认 20）
+   * 超出时丢弃最旧的事件，防止在极端情况下内存无限增长
+   */
+  maxQueueSize?: number
+}
+
+/**
+ * 经过默认值填充后的配置（Monitor 内部使用）
+ * 所有字段均已确定，不存在 undefined 可选项
+ */
+export interface ResolvedOptions {
+  dsn: string
+  appId: string
+  userId: string | undefined
+  sampleRate: number
+  plugins: Plugin[]
+  debug: boolean
+  maxQueueSize: number
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 错误采集载荷类型（第 06 章：JS 错误与资源加载错误）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * JS 运行时错误的结构化数据
+ *
+ * 对应：window.addEventListener('error', handler, true) 捕获的同步错误
+ * 包含定位问题所需的完整信息：消息 / 文件 / 行列号 / 调用栈
+ */
+export interface JsErrorPayload {
+  /** 区分错误来源，js = 同步运行时错误 */
+  subType: 'js'
+  /** 错误消息（e.message） */
+  message: string
+  /** 发生错误的脚本文件 URL（e.filename） */
+  filename: string
+  /** 行号（e.lineno） */
+  lineno: number
+  /** 列号（e.colno） */
+  colno: number
+  /** 调用栈字符串（e.error?.stack），SourceMap 还原后可定位到源码 */
+  stack: string
+  /** Error 构造函数名称（TypeError / ReferenceError / RangeError 等） */
+  errorType: string
+}
+
+/**
+ * 静态资源加载失败的结构化数据
+ *
+ * 对应：<img> / <script> / <link> 等元素触发的 error 事件
+ * 资源错误不会冒泡，必须在捕获阶段监听才能拦截
+ */
+export interface ResourceErrorPayload {
+  /** 区分错误来源，resource = 资源加载失败 */
+  subType: 'resource'
+  /** 发生错误的元素标签名（IMG / SCRIPT / LINK / AUDIO / VIDEO） */
+  tagName: string
+  /** 加载失败的资源 URL */
+  src: string
+}
+
+/**
+ * Promise 未捕获异常的结构化数据
+ *
+ * 对应：window.addEventListener('unhandledrejection', handler)
+ * 当一个 Promise 被 reject，但没有对应的 .catch() / try-catch 处理时触发。
+ *
+ * 典型场景：
+ * - async 函数里 throw 但外层忘记 await + try-catch
+ * - fetch() 失败但没有 .catch()
+ */
+export interface PromiseErrorPayload {
+  /** 区分错误来源，promise = Promise 未捕获异常 */
+  subType: 'promise'
+  /** 错误消息（reason.message，若 reason 是 Error 实例；否则 String(reason)） */
+  message: string
+  /** 调用栈（reason.stack，若 reason 是 Error 实例；否则空字符串） */
+  stack: string
+  /**
+   * Promise reject 时传递的原始值
+   * 可能是 Error 实例、字符串、对象等任意类型
+   * 这里用 unknown 表示"类型不确定，使用前需要做类型检查"
+   */
+  reason: unknown
+}
+
+/**
+ * 框架层错误的结构化数据
+ *
+ * 对应：
+ * - Vue 3：app.config.errorHandler（捕获所有组件内部抛出的错误）
+ * - React：ErrorBoundary 组件的 componentDidCatch（捕获渲染阶段的错误）
+ */
+export interface FrameworkErrorPayload {
+  /** 区分错误来源：vue / react */
+  subType: 'vue' | 'react'
+  /** 错误消息 */
+  message: string
+  /** 调用栈字符串 */
+  stack: string
+  /**
+   * 组件信息（可选）
+   * - Vue：组件名（vm.$options.name）或生命周期 info 字符串（如 "mounted hook"）
+   * - React：组件调用栈（React.ErrorInfo.componentStack）
+   */
+  componentInfo?: string
+}
+
+/**
+ * 错误事件的完整载荷类型（判别联合类型）
+ *
+ * capture('error', payload) 中 payload 的实际类型。
+ * 通过 subType 字段区分来源，TypeScript 可根据 subType 的值
+ * 自动缩窄（narrow）到对应的具体类型。
+ *
+ * 扩展历史：
+ * - JsErrorPayload         → 同步运行时错误（window error 事件）
+ * - ResourceErrorPayload   → 资源加载失败（img/script/link error 事件）
+ * - PromiseErrorPayload    → Promise 未捕获异常（unhandledrejection 事件）
+ * - FrameworkErrorPayload  → 框架层错误（Vue errorHandler / React ErrorBoundary）
+ */
+export type ErrorPayload =
+  | JsErrorPayload
+  | ResourceErrorPayload
+  | PromiseErrorPayload
+  | FrameworkErrorPayload
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 性能采集载荷类型（第 08 章：页面性能指标）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Core Web Vitals 指标载荷
+ *
+ * 通过 PerformanceObserver 原生采集或 web-vitals 库采集。
+ * Google 在 2024 年将 FID 替换为 INP，本 SDK 对齐最新标准。
+ *
+ * 指标说明：
+ * - FCP  (First Contentful Paint)  — 首次内容绘制，首屏渲染速度感知
+ * - LCP  (Largest Contentful Paint)— 最大内容绘制，主内容加载速度
+ * - CLS  (Cumulative Layout Shift) — 累积布局偏移，视觉稳定性（无单位）
+ * - INP  (Interaction to Next Paint)— 交互响应延迟，替代已废弃的 FID
+ * - TTFB (Time to First Byte)      — 首字节时间，服务端响应速度
+ */
+export interface PerformanceMetricPayload {
+  /** 区分性能数据来源，web-vital = Core Web Vitals 指标 */
+  subType: 'web-vital'
+
+  /** 指标名称 */
+  metric: 'FCP' | 'LCP' | 'CLS' | 'INP' | 'TTFB'
+
+  /**
+   * 指标值（CLS 保留 3 位小数，其余单位 ms 向下取整）
+   * CLS 是无单位比值（0~1），其余均为毫秒
+   */
+  value: number
+
+  /**
+   * Google 官方评级（2024 阈值）
+   * - good              → FCP<1800 / LCP<2500 / CLS<0.1 / INP<200 / TTFB<800
+   * - needs-improvement → FCP<3000 / LCP<4000 / CLS<0.25 / INP<500 / TTFB<1800
+   * - poor              → 超出 needs-improvement 阈值
+   */
+  rating: 'good' | 'needs-improvement' | 'poor'
+
+  /**
+   * 导航类型（来自 PerformanceNavigationTiming.type）
+   * navigate / reload / back_forward / prerender
+   */
+  navigationType: string
+}
+
+/**
+ * 页面导航时序载荷
+ *
+ * 基于 Navigation Timing Level 2（PerformanceNavigationTiming），
+ * 将浏览器导航加载的各阶段耗时结构化后上报。
+ *
+ * 阶段划分：
+ * fetchStart → DNS → TCP → (SSL) → Request → TTFB → Download → DOM → Load
+ */
+export interface NavigationTimingPayload {
+  /** 区分性能数据来源，navigation-timing = 页面导航时序 */
+  subType: 'navigation-timing'
+
+  /** DNS 解析耗时（domainLookupEnd - domainLookupStart），毫秒 */
+  dns: number
+
+  /** TCP 连接耗时（connectEnd - connectStart），毫秒 */
+  tcp: number
+
+  /**
+   * SSL/TLS 握手耗时（connectEnd - secureConnectionStart），毫秒
+   * 非 HTTPS 页面为 0
+   */
+  ssl: number
+
+  /** Time to First Byte（responseStart - fetchStart），毫秒 */
+  ttfb: number
+
+  /** 响应体下载耗时（responseEnd - responseStart），毫秒 */
+  download: number
+
+  /** DOM 可交互时间（domInteractive），从 fetchStart 起算，毫秒 */
+  domInteractive: number
+
+  /** DOM 完成解析时间（domComplete），从 fetchStart 起算，毫秒 */
+  domComplete: number
+
+  /** 页面完全加载时间（loadEventEnd - fetchStart），毫秒 */
+  loadTime: number
+}
+
+/**
+ * 性能事件的完整载荷类型（判别联合类型）
+ *
+ * capture('performance', payload) 中 payload 的实际类型。
+ * 通过 subType 字段区分 Core Web Vitals 与导航时序两大类数据。
+ */
+export type PerformancePayload = PerformanceMetricPayload | NavigationTimingPayload
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 用户行为采集载荷类型（第 09 章：用户行为与埋点）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * PV（页面浏览）事件载荷
+ *
+ * 每次 SDK 初始化时自动上报一次，代表用户"进入了某个页面"。
+ * 在 SPA 中，路由跳转会另外触发 route-change，PV 仅记录首次访问。
+ */
+export interface PVPayload {
+  /** 区分行为类型，pv = 页面浏览 */
+  subType: 'pv'
+  /** 当前页面完整 URL */
+  page: string
+  /**
+   * 来源页面 URL（document.referrer）
+   * 直接打开或地址栏输入时为空字符串
+   */
+  referrer: string
+}
+
+/**
+ * 点击行为事件载荷
+ *
+ * 使用事件委托监听 document 上的 click 事件，
+ * 自动过滤非交互元素（只记录 button / a / input 或带 data-track 属性的元素），
+ * 记录被点击元素的 CSS 路径与可读文本，便于后续热图分析。
+ */
+export interface ClickPayload {
+  /** 区分行为类型，click = 点击行为 */
+  subType: 'click'
+  /**
+   * 被点击元素的 CSS 选择器路径（最多 5 层向上追溯）
+   * 示例：`div#app > section.actions > button.btn-danger`
+   */
+  elementPath: string
+  /**
+   * 元素的可读文本（aria-label > data-track-text > innerText 前 50 字符）
+   * 用于在看板中展示"用户点了什么"
+   */
+  elementText: string
+  /** 点击时的页面 URL */
+  page: string
+}
+
+/**
+ * SPA 路由跳转事件载荷
+ *
+ * 监听 history.pushState / replaceState 劫持 + popstate + hashchange 事件，
+ * 捕获 SPA 内部导航（Vue Router / React Router 底层都依赖这些 API）。
+ */
+export interface RouteChangePayload {
+  /** 区分行为类型，route-change = 路由跳转 */
+  subType: 'route-change'
+  /** 跳转前的 URL */
+  from: string
+  /** 跳转后的 URL */
+  to: string
+}
+
+/**
+ * 自定义埋点事件载荷
+ *
+ * 业务代码通过 trackBehavior(name, extra) 主动上报，
+ * 用于采集无法自动采集的业务语义事件（下单、加入购物车、完成支付等）。
+ */
+export interface CustomPayload {
+  /** 区分行为类型，custom = 手动埋点 */
+  subType: 'custom'
+  /** 自定义事件名称，建议使用业务语义命名（如 'checkout_success'） */
+  name: string
+  /** 附加的业务数据，使用 Record<string, unknown> 保留灵活性 */
+  extra?: Record<string, unknown>
+}
+
+/**
+ * 行为事件的完整载荷类型（判别联合类型）
+ *
+ * capture('behavior', payload) 中 payload 的实际类型。
+ * 通过 subType 字段区分 pv / click / route-change / custom 四种行为。
+ */
+export type BehaviorPayload = PVPayload | ClickPayload | RouteChangePayload | CustomPayload
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API 请求监控载荷类型（第 10 章：API 请求监控）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * API 请求采集载荷
+ *
+ * 通过劫持 XMLHttpRequest（XHR）和 window.fetch，
+ * 自动采集页面中每一次 HTTP 请求的关键指标。
+ *
+ * 采集目的：
+ * - 接口耗时分析（duration）：识别慢接口，发现性能瓶颈
+ * - 接口异常追踪（status/success）：接口失败率统计，快速定位问题接口
+ * - 请求来源区分（subType）：区分用老式 XHR 还是现代 Fetch，了解业务代码质量
+ *
+ * 为什么不采集 requestBody / responseBody？
+ * 请求/响应体可能包含用户隐私（token、密码、个人信息等），
+ * 监控 SDK 遵循最小数据原则，只采集元信息，不涉及业务数据内容。
+ */
+export interface ApiPayload {
+  /**
+   * 请求发起方式：
+   * - xhr  = XMLHttpRequest（axios 默认底层、jQuery.ajax 等）
+   * - fetch = Fetch API（原生 fetch、axios 可配置、SWR/React Query 等）
+   */
+  subType: 'xhr' | 'fetch'
+
+  /**
+   * HTTP 请求方法，统一大写
+   * 常见值：GET / POST / PUT / DELETE / PATCH / HEAD / OPTIONS
+   */
+  method: string
+
+  /**
+   * 请求 URL（完整地址）
+   * 敏感参数（如 token）建议在 filterUrls 中过滤整个 URL，不做参数级脱敏
+   */
+  url: string
+
+  /**
+   * HTTP 响应状态码
+   * - 200-299：成功
+   * - 400-499：客户端错误
+   * - 500-599：服务端错误
+   * - 0：网络错误（断网、CORS 预检失败、请求被中止）
+   */
+  status: number
+
+  /**
+   * 请求耗时（毫秒，向下取整）
+   * 从 send() / fetch() 调用开始，到 loadend / Promise resolved 为止
+   */
+  duration: number
+
+  /**
+   * 请求是否成功（status >= 200 && status < 300）
+   * 方便后端直接做失败率统计，不需要每次判断 status 范围
+   */
+  success: boolean
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 监控事件数据结构
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 一条标准监控事件（Pipeline 中流转的基本单位）
+ *
+ * 无论是 JS 错误、性能指标还是用户行为，上报时都会被封装成这个统一结构。
+ * 这样后端只需要一个接口就能接收所有类型的数据。
+ */
+export interface MonitorEvent {
+  /** 会话 ID：同一次页面访问（从打开到关闭）共享同一个 traceId */
+  traceId: string
+
+  /** 项目标识，来自 MonitorOptions.appId */
+  appId: string
+
+  /** 用户标识，来自 MonitorOptions.userId */
+  userId?: string
+
+  /** 事件类型：error / performance / behavior / api */
+  type: EventType
+
+  /** 事件的具体内容，由各插件填充，类型由各章节逐步定义 */
+  payload: unknown
+
+  /** 事件发生的时间戳（毫秒级 Unix 时间） */
+  timestamp: number
+
+  /** 事件发生时的页面 URL */
+  page: string
+
+  /** 采集时的 User-Agent */
+  ua: string
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 插件接口
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 插件接口——所有采集能力的统一契约
+ *
+ * 每个插件封装一类采集逻辑：
+ * - 错误采集插件（第 06 章）
+ * - 性能采集插件（第 08 章）
+ * - 行为采集插件（第 09 章）
+ * - API 监控插件（第 10 章）
+ *
+ * 插件只通过 MonitorInstance 接口与 Monitor 通信，
+ * 不能直接访问 Monitor 的私有状态。
+ */
+export interface Plugin {
+  /** 插件唯一名称，用于防止重复注册 */
+  name: string
+
+  /**
+   * 插件初始化入口
+   * 在这里监听事件、注册观察者、绑定全局钩子
+   * @param monitor 受限的 Monitor 公共接口，插件通过 monitor.capture() 上报数据
+   */
+  setup(monitor: MonitorInstance): void
+
+  /**
+   * 插件销毁（可选）
+   * 在 monitor.destroy() 时调用，用于清理事件监听、释放资源
+   */
+  teardown?(): void
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Monitor 公共接口（暴露给插件和外部使用者）
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * MonitorInstance 是插件能看到的 Monitor "公共视图"
+ *
+ * 设计原则：插件只能拿到 capture() 和只读的 options，
+ * 不能拿到内部队列、不能直接触发 flush、不能修改配置。
+ * 这是"最小权限原则"在架构上的体现。
+ */
+export interface MonitorInstance {
+  /** 当前生效的配置（只读） */
+  readonly options: Readonly<ResolvedOptions>
+
+  /**
+   * 采集一条事件，进入数据管道
+   * @param type 事件类型
+   * @param payload 事件具体内容
+   */
+  capture(type: EventType, payload: unknown): void
+}
