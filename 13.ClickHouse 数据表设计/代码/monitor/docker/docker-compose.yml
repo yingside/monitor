@@ -1,0 +1,168 @@
+# =============================================================================
+# 前端监控全栈实战 · 开发环境基础设施
+# =============================================================================
+# 职责说明：
+#   本文件只负责「基础设施」容器：Kafka / Kafka UI / ClickHouse / PostgreSQL
+#   后端（NestJS）和前端（React）仍在本机用 pnpm dev 运行，方便调试
+#
+# 常用命令（封装在根目录 package.json 的 scripts 里）：
+#   pnpm infra:start   → 启动所有基础设施容器（后台运行）
+#   pnpm infra:stop    → 停止容器（保留数据）
+#   pnpm infra:reset   → 停止并销毁所有容器和持久化数据（⚠️ 数据清空）
+#   pnpm infra:logs    → 查看所有容器的实时日志
+#
+# 端口说明：
+#   PostgreSQL   : 5432
+#   ClickHouse   : 8123 (HTTP Interface) / 9000 (Native Interface)
+#   Kafka Broker : 9094 (宿主机访问，NestJS 本地运行时使用)
+#   Kafka UI     : 8081 (浏览器可视化)
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL — 业务数据库
+  # 用途：存储用户、项目、认证等关系型业务数据
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: monitor-postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-monitor}
+      POSTGRES_USER: ${POSTGRES_USER:-monitor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Monitor2024}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-monitor} -d ${POSTGRES_DB:-monitor}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # ClickHouse — 监控数据分析库（列式 OLAP）
+  # 用途：存储 error_logs / performance_logs / behavior_logs / api_logs
+  # HTTP Interface  : 8123（@clickhouse/client 和 DataGrip 使用此端口）
+  # Native Interface: 9000（CLI 工具 clickhouse-client 使用此端口）
+  # ---------------------------------------------------------------------------
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    container_name: monitor-clickhouse
+    restart: unless-stopped
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000"
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-monitor}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-monitor}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-Monitor2024}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+      # 强制只监听 IPv4（默认 [::]，在部分环境下 IPv6 不可用会导致启动失败）
+      - ./clickhouse/listen.xml:/etc/clickhouse-server/config.d/listen.xml:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8123/ping | grep -q 'Ok'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Kafka — 消息队列（KRaft 模式，无需 Zookeeper）
+  # 用途：解耦 DSN 接收服务与写入服务，应对上报流量峰值
+  #
+  # 镜像说明：使用 Apache 官方镜像 apache/kafka（bitnami/kafka 已从 Docker Hub 下架）
+  # 环境变量：直接使用 KAFKA_* 前缀，无需 KAFKA_CFG_*
+  #
+  # ⚠️ 课程深度说明：
+  #   本课程只演示 KRaft 单节点模式，生产环境需要多节点副本，此处不展开。
+  #
+  # 两个 Listener 说明：
+  #   PLAINTEXT    (kafka:9092)    — 容器内部通信（Consumer 服务在 Docker 网络内用）
+  #   EXTERNAL (localhost:9094)    — 宿主机访问（本机运行的 NestJS 用此地址）
+  # ---------------------------------------------------------------------------
+  kafka:
+    image: apache/kafka:3.9.2
+    container_name: monitor-kafka
+    restart: unless-stopped
+    ports:
+      - "${KAFKA_EXTERNAL_PORT:-9094}:9094"
+    environment:
+      # KRaft 模式（无 Zookeeper），单节点 combined 模式（broker + controller 同进程）
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      # Listeners：内部(PLAINTEXT) / 控制器(CONTROLLER) / 宿主机外部(EXTERNAL)
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:${KAFKA_EXTERNAL_PORT:-9094}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # 单节点 KRaft 必需（副本数设为 1）
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Topic 配置
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 1
+      # 数据目录（持久化到 Volume，默认 /tmp/kafka-logs 不持久化）
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      # 日志保留策略（开发环境保留 24 小时，避免占用太多磁盘）
+      KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_LOG_RETENTION_BYTES: 1073741824
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Kafka UI — Kafka 可视化管理界面
+  # 用途：浏览器查看 Topic 列表、消息内容、消费进度，方便调试
+  # 访问地址：http://localhost:8081
+  # ---------------------------------------------------------------------------
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: monitor-kafka-ui
+    restart: unless-stopped
+    ports:
+      - "${KAFKA_UI_PORT:-8081}:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: monitor-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+
+# =============================================================================
+# 持久化数据卷
+# pnpm infra:reset 会删除这些卷（数据清空），日常停止用 infra:stop
+# =============================================================================
+volumes:
+  postgres_data:
+    name: monitor_postgres_data
+  clickhouse_data:
+    name: monitor_clickhouse_data
+  clickhouse_logs:
+    name: monitor_clickhouse_logs
+  kafka_data:
+    name: monitor_kafka_data
+
+# =============================================================================
+# 容器网络（统一网段，容器间直接用服务名通信）
+# =============================================================================
+networks:
+  default:
+    name: monitor-infra-network

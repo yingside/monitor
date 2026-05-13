@@ -1,0 +1,24 @@
+# ——— 依赖 ———
+node_modules/
+.pnpm-store/
+
+# ——— 构建产物 ———
+dist/
+.turbo/
+
+# ——— 环境变量（不能提交到 Git）———
+.env
+.env.local
+.env.*.local
+docker/.env
+
+# ——— 编辑器配置（个人偏好，不强制统一）———
+.vscode/settings.json
+.idea/
+
+# ——— macOS 系统文件 ———
+.DS_Store
+
+# ——— 日志 ———
+*.log
+pnpm-debug.log*

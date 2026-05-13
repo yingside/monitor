@@ -1,0 +1,10 @@
+{
+  "name": "@monitor/mock-server",
+  "version": "0.1.0",
+  "description": "本地 Mock API 服务器，供 demos 测试 API 请求监控功能",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --experimental-strip-types server.ts"
+  }
+}
