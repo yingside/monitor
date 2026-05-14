@@ -1,0 +1,10 @@
+{
+  "name": "@monitor/collect-server",
+  "version": "0.1.0",
+  "description": "SDK 上报接收服务器（第 11 章端到端验证用）",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --experimental-strip-types server.ts"
+  }
+}

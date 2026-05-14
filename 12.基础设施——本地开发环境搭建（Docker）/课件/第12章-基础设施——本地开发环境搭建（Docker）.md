@@ -432,11 +432,148 @@ SELECT version();
 
 ### 验证 Kafka UI
 
-浏览器打开 [http://localhost:8081](http://localhost:8081) → 看到 `monitor-local` 集群，Broker 1 个节点 → 连通。
+浏览器打开 [http://localhost:8081](http://localhost:8081)，看到 `monitor-local` 集群，Broker 1 个节点即代表连通。
+
+**Kafka UI 的详细介绍见 12.7 节**，在那里我们会逐一解释你在界面上看到的每一项是什么意思。
 
 ---
 
-## 本章小结
+## 12.7 认识 Kafka UI——把 Kafka 的内部世界"看见"
+
+刚打开 Kafka UI，界面上出现了一堆陌生词汇：`monitor-local`、Brokers、Topics、Consumer Groups……如果不解释，一脸懵很正常。这一节专门把这些词都翻译成人话。
+
+### 打开 Kafka UI
+
+浏览器访问：[http://localhost:8081](http://localhost:8081)
+
+你会看到左侧导航栏，以及顶部显示一个集群名称：**monitor-local**。
+
+---
+
+### "monitor-local" 是什么？什么时候创建的？
+
+> 📖 **术语：Kafka 集群（Cluster）**
+>
+> 白话：一个 Kafka 服务（或多台 Kafka 服务器组成的组）叫做一个"集群"。Kafka UI 可以同时管理多个集群，所以需要给每个集群起个名字。
+
+`monitor-local` 这个名字是**我们在 `docker-compose.yml` 里配置的**：
+
+```yaml
+kafka-ui:
+  environment:
+    KAFKA_CLUSTERS_0_NAME: monitor-local          # ← 这里定义的名称
+    KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092  # ← 告诉 Kafka UI 去哪连 Kafka
+```
+
+它只是一个显示用的标签，方便你在 UI 里区分"这是哪个 Kafka"。你可以改成任何名字，比如 `my-kafka`，对 Kafka 本身没有任何影响。
+
+`kafka:9092` 是 Kafka UI 在 Docker 网络内部访问 Kafka 的地址，容器间互相访问用容器名（`kafka`）而不是 `localhost`。
+
+---
+
+### 左侧导航：四个核心概念
+
+#### Brokers（代理节点）
+
+> 📖 **术语：Broker**
+>
+> 白话：Kafka 服务器本身。你可以把 Broker 理解为"消息仓库"——存消息、分发消息都在这里。
+>
+> 生产环境为了高可用通常部署多个 Broker 组成集群。本课程开发环境只有 1 个 Broker，够用了。
+
+点击 **Brokers**，你会看到：
+- ID: `1`（我们在 docker-compose 里配置的 `KAFKA_NODE_ID: 1`）
+- Host: `kafka:9092`（内部地址）
+- 状态：Active
+
+这就是我们那个 Kafka 容器。
+
+---
+
+#### Topics（话题/频道）
+
+> 📖 **术语：Topic**
+>
+> 白话：Kafka 里的"消息分类频道"。不同类型的消息存在不同的 Topic 里，就像微信里的不同群组——技术群、家庭群、工作群各存各的消息。
+>
+> 生产者（Producer）往 Topic 里放消息，消费者（Consumer）从 Topic 里取消息。
+
+**现在点 Topics，你看到的可能是空的，或者只有几个 `__consumer_offsets` 之类以双下划线开头的内部 Topic。**
+
+这是正常的。因为我们还没有任何代码向 Kafka 发过消息，所以业务 Topic 还不存在。
+
+我们在 `docker-compose.yml` 里配置了 `KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"`，这意味着：
+
+> **Topic 不需要提前手动创建。当第一条消息发往某个 Topic 时，Kafka 会自动创建它。**
+
+第 14 章启动 `dsn-server` 并发送第一条监控数据后，你会看到这些 Topic 自动出现：
+
+| Topic 名称 | 存放的数据 |
+|---|---|
+| `monitor.error` | JS 错误、资源错误、Promise 异常、框架层错误 |
+| `monitor.performance` | Core Web Vitals 等性能指标 |
+| `monitor.behavior` | 页面访问、点击、路由跳转等用户行为 |
+| `monitor.api` | XHR / Fetch 请求监控数据 |
+
+点进一个 Topic 后，你还会看到 **Messages** 标签，里面能直接查看消息的原始内容（JSON 格式）。这在调试时非常有用：发了消息不确定有没有到 Kafka？点开看一眼就知道了。
+
+---
+
+#### Consumer Groups（消费者组）
+
+> 📖 **术语：Consumer（消费者）/ Consumer Group（消费者组）**
+>
+> 白话：
+> - **Consumer（消费者）**：从 Kafka Topic 里取消息并处理的程序。第 15 章我们写的 Kafka Consumer 就扮演这个角色，它从 Topic 里把监控事件取出来，写进 ClickHouse。
+> - **Consumer Group（消费者组）**：一批做同一件事的 Consumer 的集合，用一个组名标识。Kafka 记录每个消费者组消费到了哪条消息（叫 Offset），这样 Consumer 重启后能从上次停下的地方继续，不会重复消费。
+
+**现在 Consumer Groups 也是空的。** 因为第 15 章的 Consumer 还没实现。
+
+第 15 章实现后，你会在这里看到一个消费者组，可以看到它的 **Lag（积压量）**：
+
+> 📖 **术语：Consumer Lag（消费积压）**
+>
+> 白话：Topic 里还没被消费的消息数量。Lag = 0 说明消费跟上了生产；Lag 持续增大说明消费速度跟不上，需要扩容或优化。
+
+---
+
+### 一张图串联起来
+
+```
+你的浏览器
+   ↓ 触发错误/行为
+SDK（browser 包）
+   ↓ POST /report（批量 JSON）
+dsn-server（NestJS）             ← 第 14 章实现
+   ↓ kafkajs Producer.send()
+┌──────────────────────────────────┐
+│  Kafka Broker（monitor-local）   │  ← 现在这里已经跑起来了
+│  ├── Topic: monitor.error        │  ← 第 14 章第一次发消息后自动创建
+│  ├── Topic: monitor.performance  │
+│  ├── Topic: monitor.behavior     │
+│  └── Topic: monitor.api         │
+└──────────────────────────────────┘
+   ↓ Consumer.subscribe()
+Consumer 服务（NestJS）           ← 第 15 章实现
+   ↓ INSERT
+ClickHouse（monitor 库）          ← 第 13 章建表
+```
+
+**你在 Kafka UI 里能看到这条链路的中间层**：哪些 Topic 有消息、消息长什么样、Consumer 消费到哪了。这是调试数据链路最重要的窗口。
+
+---
+
+### 现在的状态：Kafka UI 里应该看到什么
+
+| 导航项 | 当前状态 | 什么时候会有内容 |
+|---|---|---|
+| Brokers | ✅ 1 个 Broker（ID=1） | 已就绪 |
+| Topics | 只有内部 Topic（`__consumer_offsets` 等）| 第 14 章第一次上报后自动创建业务 Topic |
+| Consumer Groups | 空 | 第 15 章 Consumer 启动后出现 |
+
+看到 Broker 在线，说明 Kafka 已经正常运行。Topic 为空是预期内的，别担心。
+
+
 
 ### 完成后的基础设施状态
 

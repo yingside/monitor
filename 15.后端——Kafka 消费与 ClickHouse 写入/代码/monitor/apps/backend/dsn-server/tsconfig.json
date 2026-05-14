@@ -1,0 +1,11 @@
+{
+  "extends": "../../../tsconfig.server.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    // NestJS 严格装饰器模式下某些参数看似"未使用"（实为 DI 注入属性），这里关闭两个严格检查
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["src"]
+}
