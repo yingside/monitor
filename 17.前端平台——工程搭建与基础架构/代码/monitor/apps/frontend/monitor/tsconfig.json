@@ -1,0 +1,12 @@
+{
+  "extends": "../../../tsconfig.app.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "declaration": false,
+    "declarationMap": false,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}

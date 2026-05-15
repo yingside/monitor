@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 主题初始化（防止 FOUC）：在 CSS 加载前同步应用已存储的主题类 -->
+    <script>
+      (function () {
+        var stored = localStorage.getItem('monitor-theme')
+        if (stored) {
+          try {
+            var s = JSON.parse(stored)
+            if (s.state && s.state.theme === 'light') {
+              document.documentElement.classList.add('light')
+            }
+          } catch (e) {}
+        }
+      })()
+    </script>
+    <!--
+      Rubik 字体（Sentry 主字体）
+      生产环境建议下载到项目内以避免网络依赖。
+      开发阶段使用 Google Fonts CDN 即可。
+    -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <title>Monitor 前端监控平台</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
