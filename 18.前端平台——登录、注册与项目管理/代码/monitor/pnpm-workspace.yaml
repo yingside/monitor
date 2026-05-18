@@ -1,0 +1,5 @@
+packages:
+  - 'packages/*'      # SDK 各子包
+  - 'apps/backend/*'  # 后端服务
+  - 'apps/frontend/*' # 前端平台
+  - 'demos/*'         # 接入 SDK 的示例项目

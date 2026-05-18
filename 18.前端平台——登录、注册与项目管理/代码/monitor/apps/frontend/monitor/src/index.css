@@ -1,0 +1,180 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * Sentry 暗紫主题 CSS 变量系统
+ *
+ * 这是一个永远暗色（dark-first）的开发者工具，
+ * 所有变量直接定义在 :root，无需 .dark 类切换。
+ *
+ * HSL 值说明：
+ *  --background   #1f1633 → hsl(258, 40%, 14%)
+ *  --card         #150f23 → hsl(259, 44%, 10%)
+ *  --primary      #6a5fc1 → hsl(247, 44%, 57%)
+ *  --secondary    #79628c → hsl(273, 18%, 47%)
+ *  --muted        #362d59 → hsl(252, 33%, 26%)
+ *  --accent       #c2ef4e → hsl(77, 83%, 62%)
+ *  --border       #362d59 → hsl(252, 33%, 26%)
+ */
+@layer base {
+  :root {
+    --background: 258 40% 14%;
+    --foreground: 0 0% 100%;
+
+    --card: 259 44% 10%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 259 44% 10%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 247 44% 57%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 273 18% 47%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 252 33% 26%;
+    --muted-foreground: 255 20% 70%;
+
+    --accent: 77 83% 62%;
+    --accent-foreground: 258 40% 14%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 252 33% 26%;
+    --input: 252 33% 26%;
+    --ring: 247 44% 57%;
+
+    /* 圆角基准 */
+    --radius: 0.5rem;
+
+    /* 侧边栏宽度（供 AppShell 使用）*/
+    --sidebar-width: 240px;
+
+    /* 侧边栏背景（比主背景更深，提供视觉层次感）*/
+    --sidebar: 259 44% 8%;
+  }
+
+  /**
+   * 浅色主题覆盖
+   * 通过 <html class="light"> 激活，与暗色主题完全通过 CSS 变量切换
+   * Sentry 浅色风格：背景为淡薰衣草白，主色调保持紫色体系
+   */
+  html.light {
+    --background: 258 30% 96%;       /* #ece8f9 — 淡薰衣草白 */
+    --foreground: 258 55% 12%;       /* #1a1138 — 深紫近黑文字 */
+
+    --card: 0 0% 100%;               /* #ffffff — 白色卡片 */
+    --card-foreground: 258 55% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 258 55% 12%;
+
+    --primary: 247 44% 57%;          /* #6a5fc1 — 保持同款紫 */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 273 18% 42%;        /* 略深的 muted purple */
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 252 28% 91%;            /* #e3ddf3 — 浅紫薄雾 */
+    --muted-foreground: 252 18% 42%; /* #5d5789 — 可读中紫灰 */
+
+    --accent: 77 65% 38%;            /* #8db520 — 深版 lime（浅色背景可读）*/
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 252 25% 87%;           /* #d5cee9 — 淡紫边框 */
+    --input: 252 25% 87%;
+    --ring: 247 44% 57%;
+
+    --sidebar: 258 28% 93%;          /* #e8e2f4 — 比背景略深的侧边栏 */
+  }
+
+  /* 全局重置 */
+  * {
+    @apply border-border;
+    box-sizing: border-box;
+  }
+
+  /* 主题切换过渡动画（仅对颜色/背景，不影响其他 transition）*/
+  *,
+  *::before,
+  *::after {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-duration: 250ms;
+    transition-timing-function: ease;
+  }
+
+  /* 排除本身有 transition 需求的元素，避免互相干扰 */
+  [data-no-theme-transition],
+  [data-no-theme-transition] * {
+    transition: none !important;
+  }
+
+  html {
+    @apply h-full;
+  }
+
+  body {
+    @apply bg-background text-foreground h-full;
+    font-family: 'Rubik', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
+    @apply h-full;
+  }
+
+  /* 滚动条美化（暗色主题风格）*/
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--background));
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted));
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--secondary));
+  }
+
+  /* 代码样式 */
+  code, pre {
+    font-family: Monaco, Menlo, 'Ubuntu Mono', monospace;
+  }
+}
+
+@layer utilities {
+  /* Sentry 玻璃态效果 */
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(18px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* Sentry 触感按钮阴影 */
+  .btn-inset {
+    box-shadow: rgba(0, 0, 0, 0.1) 0px 1px 3px 0px inset;
+  }
+
+  /* 文本截断（单行）*/
+  .text-truncate {
+    @apply truncate;
+  }
+
+  /* 淡入动画 */
+  .animate-fade-in {
+    animation: fade-in 0.2s ease-out;
+  }
+}
