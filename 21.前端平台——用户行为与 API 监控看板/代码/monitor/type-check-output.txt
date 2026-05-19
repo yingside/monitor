@@ -1,0 +1,4 @@
+
+> @monitor/frontend@0.1.0 type-check /Users/yingside/work/bak/monitor/17.前端平台——工程搭建与基础架构/代码/monitor/apps/frontend/monitor
+> tsc --noEmit
+

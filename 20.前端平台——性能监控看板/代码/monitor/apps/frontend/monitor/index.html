@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- 主题初始化（防止 FOUC）：在 CSS 加载前同步应用已存储的主题类 -->
+    <script>
+      (function () {
+        var stored = localStorage.getItem('monitor-theme')
+        if (stored) {
+          try {
+            var s = JSON.parse(stored)
+            if (s.state && s.state.theme === 'light') {
+              document.documentElement.classList.add('light')
+            }
+          } catch (e) {}
+        }
+      })()
+    </script>
+    <!--
+      Rubik 字体通过 @fontsource/rubik 本地自托管，
+      无需访问 Google Fonts CDN（国内网络可直接使用）。
+      在 main.tsx 中 import '@fontsource/rubik/400.css' 等方式引入。
+    -->
+    <title>Monitor 前端监控平台</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
